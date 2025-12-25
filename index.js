@@ -71,12 +71,11 @@ gzip.on("error" , (err)=>{
 
 //===============
 //part2 
-//q1)
 
+const server = http.createServer((req, res) => {
+  const { method, url } = req;
 
-
-const server1 = http.createServer((req, res) => {
-  const {method , url} = req;
+  //  Q1: CREATE USER 
   if (method === "POST" && url === "/user") {
     let body = "";
 
@@ -85,188 +84,121 @@ const server1 = http.createServer((req, res) => {
     req.on("end", () => {
       try {
         const newUser = JSON.parse(body);
+        const users = JSON.parse(fs.readFileSync("users.json", "utf-8") || "[]");
 
-        fs.readFile("users.json", "utf-8", (err, data) => {
-          if (err) return res.writeHead(500).end("Error reading file");
+        if (users.some(u => u.email === newUser.email)) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          return res.end(JSON.stringify({ message: "Email already exists" }));
+        }
 
-          const users = JSON.parse(data || "[]");
+        newUser.id = users.length ? Math.max(...users.map(u => u.id)) + 1 : 1;
+        users.push(newUser);
 
-       
-          if (users.some(u => u.email === newUser.email)) {
-            return res.writeHead(400, { "Content-Type": "application/json" })
-                      .end(JSON.stringify({ message: "Email already exists" }));
-          }
+        fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
 
-          newUser.id = users.length ? Math.max(...users.map(u => u.id)) + 1 : 1;
-          users.push(newUser);
-
-          fs.writeFile("users.json", JSON.stringify(users, null, 2), err => {
-            if (err) return res.writeHead(500).end("Error writing file");
-
-            res.writeHead(201, { "Content-Type": "application/json" });
-            res.end(JSON.stringify(newUser));
-          });
-        });
-
-      } catch (err) {
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(newUser));
+      } catch {
         res.writeHead(400).end("Invalid JSON");
       }
     });
-  } else {
-    res.writeHead(404).end("Route not found");
-  }
-});
 
-server1.listen(port, () => console.log(`Server running at http://localhost:${port}`));
-
-//==============
-//q2)
-
-
-const server2 = http.createServer((req, res) => {
-  const {method , url} = req;
-  if (method === "PATCH" && url.startsWith("/user/")) {
-    const id = parseInt(req.url.split("/")[2]); 
+  //  Q2: UPDATE USER 
+  } else if (method === "PATCH" && url.startsWith("/user/")) {
+    const id = parseInt(url.split("/")[2]);
     let body = "";
 
     req.on("data", chunk => body += chunk.toString());
 
     req.on("end", () => {
       try {
-        const updatedData = JSON.parse(body); 
-
+        const updatedData = JSON.parse(body);
         const users = JSON.parse(fs.readFileSync("users.json", "utf-8") || "[]");
 
-        const userIndex = users.findIndex(u => u.id === id);
-
-        if (userIndex === -1) {
+        const index = users.findIndex(u => u.id === id);
+        if (index === -1) {
           res.writeHead(404, { "Content-Type": "application/json" });
           return res.end(JSON.stringify({ message: "User not found" }));
         }
 
-        users[userIndex] = { ...users[userIndex], ...updatedData };
-
+        users[index] = { ...users[index], ...updatedData };
         fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
 
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(users[userIndex]));
-
-      } catch (err) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ message: "Invalid JSON" }));
+        res.end(JSON.stringify(users[index]));
+      } catch {
+        res.writeHead(400).end("Invalid JSON");
       }
     });
 
+  //  Q3: DELETE USER 
+  } else if (method === "DELETE" && url.startsWith("/user/")) {
+    const id = parseInt(url.split("/")[2]);
+    const users = JSON.parse(fs.readFileSync("users.json", "utf-8") || "[]");
+
+    const index = users.findIndex(u => u.id === id);
+    if (index === -1) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "User not found" }));
+    }
+
+    const deletedUser = users.splice(index, 1)[0];
+    fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(deletedUser));
+
+  //  Q4: GET ALL USERS 
+  } else if (method === "GET" && url === "/user") {
+    const users = JSON.parse(fs.readFileSync("users.json", "utf-8") || "[]");
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(users));
+
+  //  Q5: GET USER BY ID 
+  } else if (method === "GET" && url.startsWith("/user/")) {
+    const id = parseInt(url.split("/")[2]);
+    const users = JSON.parse(fs.readFileSync("users.json", "utf-8") || "[]");
+
+    const user = users.find(u => u.id === id);
+    if (!user) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ message: "User not found" }));
+    }
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(user));
+
+  //  NOT FOUND
   } else {
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ message: "Route not found" }));
   }
 });
 
-server2.listen(port, () => console.log(`Server running at http://localhost:${port}`));
-
-//===================
-//q3)
-
-
-
-const server3 = http.createServer((req, res) => {
-
-
-  if (req.method === "DELETE" && req.url.startsWith("/user/")) {
-    const id = parseInt(req.url.split("/")[2]); 
-    try {
-     
-      const users = JSON.parse(fs.readFileSync("users.json", "utf-8") || "[]");
-
- 
-      const userIndex = users.findIndex(u => u.id === id);
-
-      if (userIndex === -1) {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ message: "User not found" }));
-      }
-
-   
-      const deletedUser = users.splice(userIndex, 1)[0];
-
-    
-      fs.writeFileSync("users.json", JSON.stringify(users, null, 2));
-
- 
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(deletedUser));
-
-    } catch (err) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ message: "Error reading/writing file" }));
-    }
-
-  } else {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "Route not found" }));
-  }
-
+server.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
 });
 
-server3.listen(port, () => console.log(`Server running at http://localhost:${port}`));
 
-// ==================
-// q4)
+//===============
+// Bonus question 
 
-  const server4 = http.createServer((req ,res)=>{
-    const {method , url}= req;
-    if (method==="GET"&& url==="/user"){
-        try{
-         const users = JSON.parse(fs.readFileSync("users.json", "utf-8") || "[]");
-        res.writeHead(200 , {"content-type":"application/json"});
-        res.end(JSON.stringify(users))
-    }
-    catch (err){
-         res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ message: "Error reading file" }));
-    }
-    }
-  })
-  server4.listen(port, () => console.log(`Server running at http://localhost:${port}`));
+var majorityElement = function(nums) {
+    let majorNum = null;
+    let count = 0;
 
-//=====================
-//q5)
-
-
-const server5 = http.createServer((req, res) => {
-
-
-  if (req.method === "GET" && req.url.startsWith("/user/")) {
-    const id = parseInt(req.url.split("/")[2]); 
-
-    try {
-   
-      const users = JSON.parse(fs.readFileSync("users.json", "utf-8") || "[]");
-
-    
-      const user = users.find(u => u.id === id);
-
-      if (!user) {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ message: "User not found" }));
-      }
-
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(user));
-
-    } catch (err) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ message: "Error reading file" }));
+    for (let num of nums) {
+        if (count === 0) {
+            majorNum = num;
+        }
+        count += (num === majorNum) ? 1 : -1;
     }
 
-  } else {
-    res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ message: "Route not found" }));
-  }
+    return majorNum;
+};
 
-});
+let nums1 = [3, 2, 3];
+console.log(majorityElement(nums1));
 
-server5.listen(port, () => console.log(`Server running at http://localhost:${port}`));
-
-
+let nums2 = [2,2,1,1,1,2,2];
+console.log(majorityElement(nums2));
